@@ -344,26 +344,24 @@ class PriorityQueue:
     """Array-based priority queue implementation."""
     def __init__(self):
         """Initially empty priority queue."""
-        self.queue = []
-        self.min_index = None
-    
+        self.queue = [None]
+
     def __len__(self):
         # Number of elements in the queue.
-        return len(self.queue)
+        return len(self.queue) - 1
     
     def append(self, key):
         """Inserts an element in the priority queue."""
         if key is None:
             raise ValueError('Cannot insert None in the queue')
         self.queue.append(key)
-        self.min_index = None
+        self._swim_up(len(self.queue) - 1)
     
     def min(self):
         """The smallest element in the queue."""
-        if len(self.queue) == 0:
+        if len(self.queue) == 1:
             return None
-        self._find_min()
-        return self.queue[self.min_index]
+        return self.queue[1]
     
     def pop(self):
         """Removes the minimum element in the queue.
@@ -371,26 +369,49 @@ class PriorityQueue:
         Returns:
             The value of the removed element.
         """
-        if len(self.queue) == 0:
+        length = len(self.queue)
+        if length == 1:
             return None
-        self._find_min()
-        popped_key = self.queue.pop(self.min_index)
-        self.min_index = None
+        popped_key = self.queue[1]
+        self.queue[1], self.queue[length - 1] = self.queue[length - 1], self.queue[1]
+        self.queue.pop(length - 1)
+        self._heapify(1)
         return popped_key
     
-    def _find_min(self):
-        # Computes the index of the minimum element in the queue.
-        #
-        # This method may crash if called when the queue is empty.
-        if self.min_index is not None:
+    def _heapify(self, i):
+        length = len(self.queue)
+        lchild = 2 * i
+        rchild = lchild + 1
+        if lchild >= length and rchild >= length:
             return
-        min = self.queue[0]
-        self.min_index = 0
-        for i in xrange(1, len(self.queue)):
-            key = self.queue[i]
-            if key < min:
-                min = key
-                self.min_index = i
+
+        less_left = self.queue[i] <= self.queue[lchild]
+        min_index = -1
+        if rchild >= length:
+            if less_left:
+                return
+            else:
+                min_index = lchild
+        else:
+            less_right = self.queue[i] <= self.queue[rchild]
+            if less_left and less_right:
+                return
+            if self.queue[lchild] < self.queue[rchild]:
+                min_index = lchild
+            else:
+                min_index = rchild
+
+        self.queue[i], self.queue[min_index] = self.queue[min_index], self.queue[i]
+        self._heapify(min_index)
+    
+    def _swim_up(self, i):
+        parent = i // 2
+        if parent == 0:
+            return
+        if self.queue[parent] < self.queue[i]:
+            return
+        self.queue[parent], self.queue[i] = self.queue[i], self.queue[parent]
+        self._swim_up(parent)
 
 class Simulation:
     """State needed to compute a circuit's state as it evolves over time."""
