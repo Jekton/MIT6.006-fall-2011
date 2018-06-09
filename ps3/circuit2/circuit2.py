@@ -138,22 +138,117 @@ class WireLayer(object):
     return layer
 
 class RangeIndex(object):
-  """Array-based range index implementation."""
-  
+  class Node:
+    def __init__(self, key):
+      self.key = key
+      self.height = 0
+      self.rank = 0
+      self.left = None
+      self.right = None
+
+    def __str__(self):
+      return str(self.key) + '(' + str(self.height) + ')'
+
   def __init__(self):
     """Initially empty range index."""
-    self.data = []
+    self.root = None
   
   def add(self, key):
     """Inserts a key in the range index."""
     if key is None:
         raise ValueError('Cannot insert nil in the index')
-    self.data.append(key)
-  
+    self.root = self._insert(self.root, key)
+
+  def _insert(self, root, key):
+    if root is None:
+      return RangeIndex.Node(key)
+    if root.key < key:
+      root.right = self._insert(root.right, key)
+    else:
+      root.left = self._insert(root.left, key)
+    self._update_height(root)
+    return self._balance(root)
+
+  def _update_height(self, root):
+    root.height = max(self._height(root.left), self._height(root.right)) + 1
+
+  def _height(self, node):
+    if node is None:
+      return -1
+    return node.height
+
+  def _balance(self, root):
+    left_height = self._height(root.left)
+    right_height = self._height(root.right)
+    if left_height >= right_height + 2:
+      if self._height(root.left.left) > self._height(root.left.right):
+        root = self._left_rotate(root)
+      else:
+        root.left = self._right_rotate(root.left)
+        root = self._left_rotate(root)
+    elif right_height >= left_height + 2:
+      if self._height(root.right.right) > self._height(root.right.left):
+        root = self._right_rotate(root)
+      else:
+        root.right = self._left_rotate(root.right)
+        root = self._right_rotate(root)
+    return root
+
+  def _left_rotate(self, root):
+    left = root.left
+    root.left = left.right
+    left.right = root
+    self._update_height(root)
+    self._update_height(left)
+    return left
+
+  def _right_rotate(self, root):
+    right = root.right
+    root.right = right.left
+    right.left = root
+    self._update_height(root)
+    self._update_height(right)
+    return right
+
   def remove(self, key):
     """Removes a key from the range index."""
-    self.data.remove(key)
-  
+    self.root = self._remove(self.root, key)
+
+  def _remove(self, root, key):
+    if root is None:
+      return None
+
+    if root.key < key:
+      root.right = self._remove(root.right, key)
+    elif root.key > key:
+      root.left = self._remove(root.left, key)
+    else:
+      if root.left is None:
+        return root.right
+      elif root.right is None:
+        return root.left
+      else:
+        right_most_of_left = self._right_most(root.left)
+        root.left = self._remove(root.left, right_most_of_left)
+        root.key = right_most_of_left
+    self._update_height(root)
+    return root
+
+  def _right_most(self, root):
+    while root.right is not None:
+      root = root.right
+    return root.key
+
+  def print(self):
+    self._print(self.root)
+
+  def _print(self, root):
+    if root is None:
+      return
+    self._print(root.left)
+    print(root)
+    self._print(root.right)
+
   def list(self, first_key, last_key):
     """List of values for the keys that fall within [first_key, last_key]."""
     return [key for key in self.data if first_key <= key <= last_key]
