@@ -142,12 +142,9 @@ class RangeIndex(object):
     def __init__(self, key):
       self.key = key
       self.height = 0
-      self.rank = 0
+      self.size = 1
       self.left = None
       self.right = None
-
-    def __str__(self):
-      return str(self.key) + '(' + str(self.height) + ')'
 
   def __init__(self):
     """Initially empty range index."""
@@ -166,49 +163,63 @@ class RangeIndex(object):
       root.right = self._insert(root.right, key)
     else:
       root.left = self._insert(root.left, key)
-    self._update_height(root)
     return self._balance(root)
 
   def _update_height(self, root):
     root.height = max(self._height(root.left), self._height(root.right)) + 1
+
+  def _update_size(self, root):
+    root.size = self._size(root.left) + self._size(root.right) + 1
 
   def _height(self, node):
     if node is None:
       return -1
     return node.height
 
+  def _size(self, node):
+    if node is None:
+      return 0
+    return node.size
+
   def _balance(self, root):
     left_height = self._height(root.left)
     right_height = self._height(root.right)
     if left_height >= right_height + 2:
       if self._height(root.left.left) > self._height(root.left.right):
-        root = self._left_rotate(root)
+        root = self._right_rotate(root)
       else:
-        root.left = self._right_rotate(root.left)
-        root = self._left_rotate(root)
+        root.left = self._left_rotate(root.left)
+        root = self._right_rotate(root)
     elif right_height >= left_height + 2:
       if self._height(root.right.right) > self._height(root.right.left):
-        root = self._right_rotate(root)
+        root = self._left_rotate(root)
       else:
-        root.right = self._left_rotate(root.right)
-        root = self._right_rotate(root)
+        root.right = self._right_rotate(root.right)
+        root = self._left_rotate(root)
+    else:
+      self._update_height(root)
+      self._update_size(root)
     return root
 
   def _left_rotate(self, root):
-    left = root.left
-    root.left = left.right
-    left.right = root
-    self._update_height(root)
-    self._update_height(left)
-    return left
-
-  def _right_rotate(self, root):
     right = root.right
     root.right = right.left
     right.left = root
     self._update_height(root)
     self._update_height(right)
+    self._update_size(root)
+    self._update_size(right)
     return right
+
+  def _right_rotate(self, root):
+    left = root.left
+    root.left = left.right
+    left.right = root
+    self._update_height(root)
+    self._update_height(left)
+    self._update_size(root)
+    self._update_size(left)
+    return left
 
   def remove(self, key):
     """Removes a key from the range index."""
@@ -231,36 +242,67 @@ class RangeIndex(object):
         right_most_of_left = self._right_most(root.left)
         root.left = self._remove(root.left, right_most_of_left)
         root.key = right_most_of_left
-    self._update_height(root)
-    return root
+    return self._balance(root)
 
   def _right_most(self, root):
     while root.right is not None:
       root = root.right
     return root.key
 
-  def print(self):
-    self._print(self.root)
-
-  def _print(self, root):
-    if root is None:
-      return
-    self._print(root.left)
-    print(root)
-    self._print(root.right)
-
   def list(self, first_key, last_key):
     """List of values for the keys that fall within [first_key, last_key]."""
-    return [key for key in self.data if first_key <= key <= last_key]
-  
+    lca = self._lca(first_key, last_key)
+    result = []
+    self._node_list(lca, first_key, last_key, result)
+    return result
+
+  def _node_list(self, node, lo, hi, result):
+    if node is None:
+      return
+    if lo <= node.key and node.key <= hi:
+      result.append(node.key)
+    if node.key >= lo:
+      self._node_list(node.left, lo, hi, result)
+    if node.key <= hi:
+      self._node_list(node.right, lo, hi, result)
+
+  def _lca(self, lo, hi):
+    node = self.root
+    while node is not None and not (lo <= node.key and node.key <= hi):
+      if lo < node.key:
+        node = node.left
+      else:
+        node = node.right
+    return node
+
   def count(self, first_key, last_key):
     """Number of keys that fall within [first_key, last_key]."""
-    result = 0
-    for key in self.data:
-      if first_key <= key <= last_key:
-        result += 1
-    return result
-  
+    first_exits, first_rank = self._rank(first_key)
+    _, last_rank = self._rank(last_key)
+    return last_rank - first_rank + int(first_exits)
+
+  def _rank(self, key):
+    rank = 0
+    root = self.root
+    while root is not None and not(root.key == key):
+      if key < root.key:
+        root = root.left
+      else:
+        rank += self._size(root.left) + 1
+        root = root.right
+    if root is not None:
+      rank += self._size(root.left) + 1
+      return True, rank
+    return False, rank
+
+  def _size(self, node):
+    if node is None:
+      return 0
+    return node.size
+
+  def height(self):
+    return self._height(self.root)
+
 class TracedRangeIndex(RangeIndex):
   """Augments RangeIndex to build a trace for the visualizer."""
   
@@ -445,14 +487,15 @@ class CrossVerifier(object):
       elif event_type == 'remove':
         self.index.remove(KeyWirePair(wire.y1, wire))
       elif event_type == 'query':
-        cross_wires = []
-        for kwp in self.index.list(KeyWirePairL(wire.y1),
-                                   KeyWirePairH(wire.y2)):
-          if wire.intersects(kwp.wire):
-            cross_wires.append(kwp.wire)
         if count_only:
-          result += len(cross_wires)
+          result += self.index.count(KeyWirePairL(wire.y1),
+                                     KeyWirePairH(wire.y2))
         else:
+          cross_wires = []
+          for kwp in self.index.list(KeyWirePairL(wire.y1),
+                                     KeyWirePairH(wire.y2)):
+            if wire.intersects(kwp.wire):
+              cross_wires.append(kwp.wire)
           for cross_wire in cross_wires:
             result.add_crossing(wire, cross_wire)
 
